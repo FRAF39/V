@@ -1,0 +1,22 @@
+{
+  "name": "priyo-codex-host-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "argon2": "^0.41.1",
+    "connect-pg-simple": "^10.0.0",
+    "express": "^5.1.0",
+    "express-rate-limit": "^7.5.0",
+    "express-session": "^1.18.1",
+    "helmet": "^8.1.0",
+    "multer": "^2.0.0",
+    "pg": "^8.16.0",
+    "zod": "^3.24.2",
+    "adm-zip": "^0.5.16",
+    "http-proxy": "^1.18.1"
+  }
+}

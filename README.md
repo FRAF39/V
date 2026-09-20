@@ -1,47 +1,39 @@
-# PRIYO CODEX HOST — Professional Render Edition
+# PRIYO CODEX HOST — Professional Render Hosting Panel
 
-A professional hosting control panel designed to run as a Render Web Service.
+This edition uses a server-side Render API integration. The panel login is controlled by `ADMIN_USERNAME` and `ADMIN_PASSWORD`; it does not ask users for a Render username/password.
 
-## Authentication
+## Render environment variables
 
-The panel has one primary administrator identity configured by:
-
+Required:
+- `DATABASE_URL`
+- `SESSION_SECRET`
 - `ADMIN_USERNAME`
 - `ADMIN_PASSWORD`
+- `RENDER_API_KEY`
+- `RENDER_OWNER_ID`
+- `DEPLOY_GITHUB_REPO`
 
-On startup the administrator account is created or synchronized to these values. Users created from the admin console remain separate member accounts.
+Optional:
+- `DEPLOY_GITHUB_BRANCH` (default `main`)
+- `GITHUB_TOKEN`
+- `RENDER_REGION` (default `oregon`)
+- `RENDER_PLAN` (default `free`)
+- `PUBLIC_BASE_URL`
 
-The panel never asks for a Render dashboard username/password. Render API access is server-side only through `RENDER_API_KEY` and `RENDER_OWNER_ID`.
+## Important deployment flow
 
-## Render deployment
+1. A project is created in the panel.
+2. Project files are stored under the project's private storage directory.
+3. Deploy syncs the current project files to `projects/<project-id>/` in the configured GitHub repository.
+4. The panel creates or reuses a Render service through the Render REST API.
+5. The Render service builds/deploys the project from that repository path.
 
-Configure:
+The panel does **not** require a Docker daemon or `DOCKER_HOST`.
 
-```env
-DATABASE_URL=...
-SESSION_SECRET=...
-ADMIN_USERNAME=admin
-ADMIN_PASSWORD=use-a-long-random-password
-RENDER_API_KEY=...
-RENDER_OWNER_ID=...
-DEPLOY_GITHUB_REPO=https://github.com/OWNER/REPOSITORY
-DEPLOY_GITHUB_BRANCH=main
-GITHUB_TOKEN=...
-RENDER_REGION=oregon
-RENDER_PLAN=free
-```
+## Delete behavior
 
-Render API keys are secrets and must not be committed to source control.
+Deleting a project removes its managed Render service when one exists, then removes the local project files and database records. A missing Render service (404) is treated as already deleted. Other remote deletion errors are surfaced to the UI instead of being hidden.
 
-## Features
+## Source stack
 
-- Admin-first panel authentication
-- Project creation, upload, source-stack detection and deployment
-- Source technology/evidence detection from project manifests and files
-- Project deletion with remote Render service cleanup
-- Deployment stop/delete/logs
-- Storage and project quotas
-- Member account management
-- Render connection status without exposing credentials
-- PostgreSQL-backed sessions and data
-- Security headers, rate limiting and Argon2 password hashing
+Project details scan the actual uploaded files and manifests and display detected technologies such as Node.js, Python, React, Vite, Next.js, Express, Vue, Angular, Svelte, TypeScript, PHP, Go, Rust and Ruby.
