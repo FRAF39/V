@@ -1,1 +1,84 @@
+name: Extract ZIP Files
 
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "**/*.zip"
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Extract ZIP files to repository root
+        shell: bash
+        run: |
+          set -e
+
+          shopt -s nullglob
+
+          for zipfile in *.zip; do
+            echo "======================================"
+            echo "Processing: $zipfile"
+            echo "======================================"
+
+            TEMP_DIR=".zip_extract"
+
+            rm -rf "$TEMP_DIR"
+            mkdir -p "$TEMP_DIR"
+
+            # Extract ZIP
+            unzip -q -o "$zipfile" -d "$TEMP_DIR"
+
+            # Detect single root directory
+            entries=("$TEMP_DIR"/*)
+
+            if [ ${#entries[@]} -eq 1 ] && [ -d "${entries[0]}" ]; then
+              ROOT_DIR="${entries[0]}"
+
+              echo "Root folder detected:"
+              echo "$ROOT_DIR"
+
+              # Move everything inside root folder to repository root
+              cp -a "$ROOT_DIR"/. .
+
+            else
+              echo "No single root folder detected."
+              echo "Moving ZIP contents directly to repository root."
+
+              cp -a "$TEMP_DIR"/. .
+            fi
+
+            # Remove temporary extraction folder
+            rm -rf "$TEMP_DIR"
+
+            echo "Extraction completed."
+          done
+
+      - name: Remove ZIP files
+        shell: bash
+        run: |
+          rm -f -- *.zip
+
+      - name: Commit extracted files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Extract ZIP contents to repository root"
+            git push
+          fi
