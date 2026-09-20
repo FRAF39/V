@@ -96,6 +96,3 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   metadata JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
-
-ALTER TABLE deployments ADD COLUMN IF NOT EXISTS provider TEXT NOT NULL DEFAULT 'docker';

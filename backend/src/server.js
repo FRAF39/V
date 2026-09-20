@@ -13,7 +13,8 @@ import { config } from "./config.js";
 import { pool,q,migrate } from "./db.js";
 import { hashPassword,verifyPassword,requireAuth,requireAdmin,accountUsable } from "./auth.js";
 import { ensureProjectDir,safeRelative,directorySize } from "./storage.js";
-import { deploy,stopDeployment,logsFor } from "./deploy.js";
+import { deploy,stopDeployment,logsFor,deleteRemoteService } from "./deploy.js";
+import { detectSource } from "./source.js";
 
 const app=express();
 const publicProxy=httpProxy.createProxyServer({changeOrigin:true});
@@ -96,7 +97,20 @@ app.post("/api/projects/:id/upload",requireAuth,upload.single("file"),async(req,
   } catch(e){res.status(400).json({error:e.message});} finally {await fs.unlink(req.file.path).catch(()=>{});}
 });
 app.get("/api/projects/:id/files",requireAuth,async(req,res)=>{const p=(await q("SELECT * FROM projects WHERE id=$1 AND user_id=$2",[req.params.id,req.session.user.id])).rows[0];if(!p)return res.sendStatus(404);res.json((await q("SELECT id,path,size_bytes,updated_at FROM project_files WHERE project_id=$1 ORDER BY path",[p.id])).rows);});
-app.post("/api/projects/:id/deploy",requireAuth,async(req,res)=>{const p=(await q("SELECT p.*,u.* FROM projects p JOIN users u ON u.id=p.user_id WHERE p.id=$1 AND p.user_id=$2",[req.params.id,req.session.user.id])).rows[0];if(!p)return res.sendStatus(404);if(!accountUsable(p))return res.status(403).json({error:"Account expired or disabled"});const count=Number((await q("SELECT count(*) FROM deployments WHERE user_id=$1 AND status IN ('Queued','Building','Running')",[p.user_id])).rows[0].count);if(count>=p.max_deployments)return res.status(403).json({error:"Deployment limit reached"});const r=await q("INSERT INTO deployments(project_id,user_id,runtime,status) VALUES($1,$2,$3,'Queued') RETURNING *",[p.id,p.user_id,p.runtime]);await audit(req,"create_deployment","deployment",r.rows[0].id);deploy({id:r.rows[0].id,userId:p.user_id,projectId:p.id,runtime:p.runtime,buildCommand:p.build_command,startCommand:p.start_command});res.status(202).json(r.rows[0]);});
+app.get("/api/projects/:id/source",requireAuth,async(req,res)=>{const p=(await q("SELECT id,user_id,runtime FROM projects WHERE id=$1 AND user_id=$2",[req.params.id,req.session.user.id])).rows[0];if(!p)return res.sendStatus(404);try{res.json(await detectSource(p.user_id,p.id,p.runtime));}catch(e){res.status(400).json({error:e.message});}});
+app.delete("/api/projects/:id",requireAuth,async(req,res)=>{
+  const p=(await q("SELECT * FROM projects WHERE id=$1 AND user_id=$2",[req.params.id,req.session.user.id])).rows[0];
+  if(!p)return res.sendStatus(404);
+  const deps=(await q("SELECT id,container_name FROM deployments WHERE project_id=$1",[p.id])).rows;
+  for(const d of deps){ try{await stopDeployment(d.id); await deleteRemoteService(d.container_name);}catch{} }
+  const dir=await ensureProjectDir(p.user_id,p.id);
+  await fs.rm(dir,{recursive:true,force:true});
+  await q("DELETE FROM projects WHERE id=$1 AND user_id=$2",[p.id,p.user_id]);
+  await refreshUsage(p.user_id);
+  await audit(req,"delete_project","project",p.id);
+  res.json({ok:true});
+});
+app.post("/api/projects/:id/deploy",requireAuth,async(req,res)=>{const p=(await q("SELECT p.*,u.* FROM projects p JOIN users u ON u.id=p.user_id WHERE p.id=$1 AND p.user_id=$2",[req.params.id,req.session.user.id])).rows[0];if(!p)return res.sendStatus(404);if(!accountUsable(p))return res.status(403).json({error:"Account expired or disabled"});const count=Number((await q("SELECT count(*) FROM deployments WHERE user_id=$1 AND status IN ('Queued','Building','Running')",[p.user_id])).rows[0].count);if(count>=p.max_deployments)return res.status(403).json({error:"Deployment limit reached"});const r=await q("INSERT INTO deployments(project_id,user_id,runtime,status) VALUES($1,$2,$3,'Queued') RETURNING *",[p.id,p.user_id,p.runtime]);await audit(req,"create_deployment","deployment",r.rows[0].id);deploy({id:r.rows[0].id,userId:p.user_id,projectId:p.id,runtime:p.runtime,name:p.name,buildCommand:p.build_command,startCommand:p.start_command});res.status(202).json(r.rows[0]);});
 app.get("/api/deployments/:id/logs",requireAuth,async(req,res)=>{const d=(await q("SELECT * FROM deployments WHERE id=$1 AND user_id=$2",[req.params.id,req.session.user.id])).rows[0];if(!d)return res.sendStatus(404);res.json(await logsFor(d.id));});
 app.post("/api/deployments/:id/stop",requireAuth,async(req,res)=>{const d=(await q("SELECT * FROM deployments WHERE id=$1 AND user_id=$2",[req.params.id,req.session.user.id])).rows[0];if(!d)return res.sendStatus(404);await stopDeployment(d.id);res.json({ok:true});});
 
@@ -104,9 +118,6 @@ app.use("/d/:id",async(req,res)=>{
   const id=req.params.id;
   const d=(await q("SELECT * FROM deployments WHERE id=$1 AND status='Running'",[id])).rows[0];
   if(!d) return res.status(404).send("Deployment not running");
-  if (d.container_name?.startsWith("srv-") && d.url) {
-    return res.redirect(302, d.url);
-  }
   const target=`http://host.docker.internal:${d.host_port}`;
   req.url=req.url.replace(/^\/d\/[^/]+/,"") || "/";
   publicProxy.web(req,res,{target},e=>res.status(502).send("Deployment proxy unavailable"));

@@ -7,7 +7,14 @@ export const config = {
   adminPassword: process.env.ADMIN_PASSWORD,
   publicBaseUrl: process.env.PUBLIC_BASE_URL || "http://localhost:8080",
   uploadMaxBytes: Number(process.env.UPLOAD_MAX_BYTES || 104857600),
-  deploymentTimeoutMs: Number(process.env.DEPLOYMENT_TIMEOUT_MS || 120000)
+  deploymentTimeoutMs: Number(process.env.DEPLOYMENT_TIMEOUT_MS || 120000),
+  renderApiKey: process.env.RENDER_API_KEY || "",
+  renderOwnerId: process.env.RENDER_OWNER_ID || "",
+  renderRepo: process.env.DEPLOY_GITHUB_REPO || "",
+  renderBranch: process.env.DEPLOY_GITHUB_BRANCH || "main",
+  githubToken: process.env.GITHUB_TOKEN || "",
+  renderRegion: process.env.RENDER_REGION || "oregon",
+  renderPlan: process.env.RENDER_PLAN || "free"
 };
 for (const [k,v] of Object.entries(config)) {
   if (["databaseUrl","sessionSecret","adminUsername","adminPassword"].includes(

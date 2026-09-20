@@ -7,8 +7,6 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      - key: DEPLOYMENT_PROVIDER
-        value: render
       - key: DATABASE_URL
         fromDatabase:
           name: priyo-codex-db
@@ -25,17 +23,16 @@ services:
         sync: false
       - key: RENDER_OWNER_ID
         sync: false
-      - key: RENDER_PROJECT_REGION
-        value: oregon
-      - key: RENDER_PROJECT_PLAN
-        value: free
       - key: DEPLOY_GITHUB_REPO
         sync: false
       - key: DEPLOY_GITHUB_BRANCH
         value: main
       - key: GITHUB_TOKEN
         sync: false
-
+      - key: RENDER_REGION
+        value: oregon
+      - key: RENDER_PLAN
+        value: free
 databases:
   - name: priyo-codex-db
     plan: free

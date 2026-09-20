@@ -1,52 +1,72 @@
-# PRIYO CODEX HOST
+# PRIYO_CODEX HOST — Professional Edition
 
-A Render-ready hosting control panel for HTML/static, Node.js and Python projects.
+A production-oriented hosting control panel for project files, source-stack detection, deployments, quotas and account management.
 
-## Important: Render deployment architecture
+## What is included
 
-The panel itself can run on Render, but a Render web service does not provide a Docker daemon to application code. The old deployment path tried to run `docker build` and `docker run` from inside the panel and therefore failed with the `DOCKER_HOST` executor error.
+- Responsive professional dashboard with light/dark mode
+- Project creation, upload, deploy and **delete project** actions
+- File manager with project selection and file metadata
+- **Source Stack** detection from the project's real files/manifests (Node.js, Python, React, Vite, Next.js, Express, PHP, Go, Rust, Ruby, TypeScript, etc.)
+- Deployment history and logs
+- User quotas and runtime permissions
+- Admin user management
+- PostgreSQL-backed sessions and project metadata
+- Render-managed deployment path; the web panel does not require a Docker daemon or `DOCKER_HOST`
 
-This version defaults to a safer **Render API deployment mode in production**. Uploaded project files are synchronized into a configured GitHub repository, and the panel creates/updates a dedicated Render web service whose Docker build context is that project directory. Render performs the actual build and container execution.
+## Render-managed deployment architecture
 
-Render supports Docker services from a Dockerfile and exposes a REST API for creating/updating services and triggering deploys. See the official docs:
-- https://render.com/docs/web-services
-- https://render.com/docs/docker
-- https://render.com/docs/api
-- https://api-docs.render.com/reference/create-service
+The panel runs as a normal Render web service. When a user deploys a project, the panel:
 
-GitHub's Contents API is used to create/update project files in the configured repository. `.github`, `.env`, and Git metadata are deliberately excluded from uploads.
+1. Reads the project's uploaded source.
+2. Syncs the project into the configured GitHub repository under `projects/<project-id>/`.
+3. Creates or redeploys a Render service pointing at that project directory.
+4. Stores the Render service ID and public URL in the deployment record.
+5. Deletes/suspends the managed Render service when the deployment/project is removed.
 
-## Required Render environment variables
+This avoids trying to run Docker containers inside the panel's Render web service.
 
-Set these on the **PRIYO CODEX HOST** Render service:
+## Required production environment variables
 
-- `DEPLOYMENT_PROVIDER=render`
-- `RENDER_API_KEY` — a Render API key
-- `RENDER_OWNER_ID` — your Render workspace/team ID, usually starts with `tea-`
-- `DEPLOY_GITHUB_REPO` — repository URL, for example `https://github.com/yourname/priyo-hosting-projects`
-- `DEPLOY_GITHUB_BRANCH=main`
-- `GITHUB_TOKEN` — a GitHub token with Contents write permission for that repository
+```text
+DATABASE_URL
+SESSION_SECRET
+ADMIN_USERNAME
+ADMIN_PASSWORD
+PUBLIC_BASE_URL
+RENDER_API_KEY
+RENDER_OWNER_ID
+DEPLOY_GITHUB_REPO
+DEPLOY_GITHUB_BRANCH=main
+GITHUB_TOKEN
+RENDER_REGION=oregon
+RENDER_PLAN=free
+```
 
-The Render workspace must have access to the GitHub repository used for child services. Keep both API tokens as Render secrets and never commit them to Git.
+`RENDER_API_KEY` and `GITHUB_TOKEN` are secrets. Never commit them to GitHub. Render API requests use bearer authentication, and Render documents API keys as secret credentials. The Render API supports programmatic service creation, deploys, suspension and deletion.
 
-## What happens when a user clicks Deploy
+Render supports native Node.js and Python runtimes as well as Docker-based services. Web services must listen on `0.0.0.0` and normally use the `PORT` environment variable.
 
-1. The panel reads the uploaded project files.
-2. The panel adds a generated `.priyo.Dockerfile` (and an nginx config for HTML projects) under `projects/<project-id>/` in the configured GitHub repo.
-3. The panel creates or updates a Render web service for that project.
-4. Render builds and runs the project.
-5. The deployment URL shown in the panel points to the Render child service.
+## GitHub repository requirements
+
+Create a repository for deployed project source and give the configured token permission to write repository contents. The panel creates a separate directory for each hosted project, so multiple projects can share the same repository while Render uses each project's `rootDir`.
 
 ## Local development
-
-Local development can still use the Docker executor:
 
 ```bash
 docker compose up --build
 ```
 
-Set `DEPLOYMENT_PROVIDER=docker` locally if you want to use the original local Docker path.
+Open `http://localhost:8080`.
 
-## Security notes
+For local-only Docker deployment experiments, the included compose setup can still be used. Production deployment should use the managed Render/GitHub path above.
 
-Do not expose a privileged Docker socket from a public Render web service. If you choose a separate Docker executor instead of Render API mode, keep it isolated and authenticated.
+## Production checklist
+
+- Use a long random `SESSION_SECRET`
+- Use strong admin credentials
+- Store Render and GitHub credentials only in environment variables/secrets
+- Use HTTPS
+- Set `PUBLIC_BASE_URL` to the real panel URL
+- Configure a persistent/durable storage strategy for large user uploads if required
+- Keep deployment quotas and runtime permissions enabled
