@@ -15,6 +15,7 @@ import { hashPassword,verifyPassword,requireAuth,requireAdmin,accountUsable } fr
 import { ensureProjectDir,safeRelative,directorySize } from "./storage.js";
 import { deploy,stopDeployment,logsFor,deleteRemoteService } from "./deploy.js";
 import { detectSource } from "./source.js";
+import { platformStatus } from "./platform.js";
 
 const app=express();
 const publicProxy=httpProxy.createProxyServer({changeOrigin:true});
@@ -53,7 +54,8 @@ async function saveTree(userId,projectId,src) {
   }
   await walk(src); await refreshUsage(userId);
 }
-app.get("/api/health",(req,res)=>res.json({ok:true}));
+app.get("/api/health",(req,res)=>res.json({ok:true,product:"PRIYO CODEX HOST",edition:"Professional"}));
+app.get("/api/platform/status",requireAuth,(req,res)=>res.json(platformStatus()));
 app.post("/api/auth/login",async(req,res)=>{
   const b=z.object({username:z.string().min(1).max(100),password:z.string().min(1).max(200)}).parse(req.body);
   const r=await q("SELECT * FROM users WHERE username=$1",[b.username]); const u=r.rows[0];
@@ -101,8 +103,13 @@ app.get("/api/projects/:id/source",requireAuth,async(req,res)=>{const p=(await q
 app.delete("/api/projects/:id",requireAuth,async(req,res)=>{
   const p=(await q("SELECT * FROM projects WHERE id=$1 AND user_id=$2",[req.params.id,req.session.user.id])).rows[0];
   if(!p)return res.sendStatus(404);
-  const deps=(await q("SELECT id,container_name FROM deployments WHERE project_id=$1",[p.id])).rows;
-  for(const d of deps){ try{await stopDeployment(d.id); await deleteRemoteService(d.container_name);}catch{} }
+  const deps=(await q("SELECT id,container_name,status FROM deployments WHERE project_id=$1",[p.id])).rows;
+  const remoteErrors=[];
+  for(const d of deps){
+    try { if(d.status !== "Stopped") await stopDeployment(d.id); } catch(e) { remoteErrors.push(`stop ${d.id}: ${e.message}`); }
+    if(d.container_name) { try { await deleteRemoteService(d.container_name); } catch(e) { remoteErrors.push(`delete ${d.container_name}: ${e.message}`); } }
+  }
+  if(remoteErrors.length) return res.status(502).json({error:"Project could not be fully deleted because a managed Render service could not be removed.",details:remoteErrors});
   const dir=await ensureProjectDir(p.user_id,p.id);
   await fs.rm(dir,{recursive:true,force:true});
   await q("DELETE FROM projects WHERE id=$1 AND user_id=$2",[p.id,p.user_id]);
@@ -126,6 +133,14 @@ app.use("/d/:id",async(req,res)=>{
 const dist=path.resolve("frontend/dist");
 app.use(express.static(dist)); app.get("/{*splat}",(req,res)=>res.sendFile(path.join(dist,"index.html")));
 await migrate();
+if (!config.adminUsername || !config.adminPassword) throw new Error("ADMIN_USERNAME and ADMIN_PASSWORD are required");
 const admin=await q("SELECT id FROM users WHERE username=$1",[config.adminUsername]);
-if(!admin.rows.length) { const h=await hashPassword(config.adminPassword); const r=await q("INSERT INTO users(username,password_hash,is_admin) VALUES($1,$2,true) RETURNING id",[config.adminUsername,h]); await q("INSERT INTO usage(user_id) VALUES($1)",[r.rows[0].id]); console.log(`Created admin ${config.adminUsername}`); }
-app.listen(config.port,()=>console.log(`PRIYO_CODEX HOST listening on ${config.port}`));
+const adminHash=await hashPassword(config.adminPassword);
+if(!admin.rows.length) {
+  const r=await q("INSERT INTO users(username,password_hash,is_admin,enabled,expires_at) VALUES($1,$2,true,true,NULL) RETURNING id",[config.adminUsername,adminHash]);
+  await q("INSERT INTO usage(user_id) VALUES($1) ON CONFLICT(user_id) DO NOTHING",[r.rows[0].id]);
+  console.log(`Created panel administrator ${config.adminUsername}`);
+} else {
+  await q("UPDATE users SET password_hash=$1,is_admin=true,enabled=true,expires_at=NULL,updated_at=now() WHERE username=$2",[adminHash,config.adminUsername]);
+}
+app.listen(config.port,()=>console.log(`PRIYO_CODEX HOST Professional listening on ${config.port}`));
