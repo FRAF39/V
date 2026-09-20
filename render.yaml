@@ -1,0 +1,43 @@
+services:
+  - type: web
+    name: priyo-codex-host
+    env: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DEPLOYMENT_PROVIDER
+        value: render
+      - key: DATABASE_URL
+        fromDatabase:
+          name: priyo-codex-db
+          property: connectionString
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: RENDER_API_KEY
+        sync: false
+      - key: RENDER_OWNER_ID
+        sync: false
+      - key: RENDER_PROJECT_REGION
+        value: oregon
+      - key: RENDER_PROJECT_PLAN
+        value: free
+      - key: DEPLOY_GITHUB_REPO
+        sync: false
+      - key: DEPLOY_GITHUB_BRANCH
+        value: main
+      - key: GITHUB_TOKEN
+        sync: false
+
+databases:
+  - name: priyo-codex-db
+    plan: free
+    databaseName: priyo_host
+    user: priyo
